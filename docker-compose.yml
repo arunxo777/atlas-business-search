@@ -1,0 +1,37 @@
+services:
+  proxy-in-a-box:
+    image: ghcr.io/naiba/proxy-in-a-box:latest
+    restart: unless-stopped
+    volumes:
+      - ./proxy-pool/data:/app/data
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "8083:8083"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    env_file: .env
+    environment:
+      PROXY_POOL_HTTP: http://proxy-in-a-box:8080
+      PROXY_POOL_API: http://proxy-in-a-box:8083
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - proxy-in-a-box
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
