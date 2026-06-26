@@ -1,0 +1,5 @@
+name: thespeedx-http
+type: text
+url: "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
+protocol: http
+interval: 10m

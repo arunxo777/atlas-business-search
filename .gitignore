@@ -55,7 +55,7 @@ pnpm-debug.log*
 .pnpm-store/
 
 # ─── Database & runtime data ───────────────────────────────────────────────────
-data/
+/data/
 *.db
 *.sqlite
 *.sqlite3
