@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import axios from "axios";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const IS_NGROK = /ngrok(-free)?\.(app|dev)/i.test(API_URL);
 
 export type VerificationStatus =
   | "highly_verified"
@@ -116,7 +117,10 @@ export interface ProgressEvent {
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    ...(IS_NGROK ? { "ngrok-skip-browser-warning": "true" } : {}),
+  },
   timeout: 8000,
 });
 
@@ -184,6 +188,62 @@ export function useSSE(jobId: string | null, handlers: SSEHandlers) {
     if (!jobId) return () => undefined;
 
     const url = `${API_URL}/api/research/${jobId}/stream`;
+    let closed = false;
+    let abort: AbortController | null = null;
+
+    if (IS_NGROK) {
+      abort = new AbortController();
+      const headers = { "ngrok-skip-browser-warning": "true", Accept: "text/event-stream" };
+
+      fetch(url, { headers, signal: abort.signal })
+        .then(async (response) => {
+          if (!response.ok || !response.body) throw new Error("SSE connection failed");
+          setConnected(true);
+          handlersRef.current.onConnect?.();
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (!closed) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop() ?? "";
+
+            for (const block of parts) {
+              const lines = block.split("\n");
+              let event = "message";
+              let data = "";
+              for (const line of lines) {
+                if (line.startsWith("event:")) event = line.slice(6).trim();
+                if (line.startsWith("data:")) data = line.slice(5).trim();
+              }
+              if (!data) continue;
+              dispatchSSE(event, data, handlersRef, () => {
+                closed = true;
+                abort?.abort();
+                setConnected(false);
+                handlersRef.current.onDisconnect?.();
+              });
+            }
+          }
+        })
+        .catch(() => {
+          if (!closed) {
+            setConnected(false);
+            handlersRef.current.onDisconnect?.();
+          }
+        });
+
+      return () => {
+        closed = true;
+        abort?.abort();
+        setConnected(false);
+      };
+    }
+
     const source = new EventSource(url);
 
     source.onopen = () => {
@@ -233,4 +293,27 @@ export function useSSE(jobId: string | null, handlers: SSEHandlers) {
   }, [connect]);
 
   return { connected };
+}
+
+function dispatchSSE(
+  event: string,
+  data: string,
+  handlersRef: { current: SSEHandlers },
+  onClose: () => void
+) {
+  try {
+    if (event === "progress") {
+      handlersRef.current.onProgress?.(JSON.parse(data) as ProgressEvent);
+    } else if (event === "business") {
+      handlersRef.current.onBusiness?.(JSON.parse(data) as BusinessRecord);
+    } else if (event === "summary") {
+      handlersRef.current.onSummary?.(JSON.parse(data) as ResearchJob);
+      onClose();
+    } else if (event === "error") {
+      const parsed = JSON.parse(data) as { message: string };
+      handlersRef.current.onError?.(parsed.message);
+    }
+  } catch {
+    /* ignore malformed SSE chunks */
+  }
 }
