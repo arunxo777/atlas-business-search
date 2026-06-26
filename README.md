@@ -224,6 +224,54 @@ docker-compose up --build
 
 ---
 
+## ▲ Vercel (Frontend)
+
+The **React UI** is deployed on Vercel:
+
+**https://frontend-three-pi-73.vercel.app**
+
+> The **Python backend cannot run on Vercel** (Playwright, SQLite, long-running scrape jobs need a persistent server). Deploy the frontend on Vercel and the backend on [Render](https://render.com), [Railway](https://railway.app), or [Fly.io](https://fly.io).
+
+### Deploy frontend to Vercel
+
+```bash
+cd frontend
+npm install
+npx vercel login
+npx vercel deploy --prod
+```
+
+In the [Vercel dashboard](https://vercel.com) → **Project Settings → Environment Variables**, add:
+
+| Variable | Value |
+|----------|-------|
+| `VITE_API_URL` | Your public backend URL (e.g. `https://atlas-api.onrender.com`) |
+
+On the backend, add your Vercel URL to CORS in `.env`:
+
+```env
+CORS_ORIGINS=https://frontend-three-pi-73.vercel.app,http://localhost:3000
+```
+
+### Connect GitHub for auto-deploy
+
+1. Vercel → **Add New Project** → import `arunxo777/atlas-business-search`
+2. Set **Root Directory** to `frontend`
+3. Add `VITE_API_URL` environment variable
+4. Deploy — every push to `main` redeploys the UI
+
+### Hackathon demo tip (backend still local)
+
+Use [ngrok](https://ngrok.com) to expose your local backend:
+
+```bash
+ngrok http 8000
+```
+
+Set `VITE_API_URL=https://YOUR-NGROK-URL.ngrok-free.app` in Vercel, redeploy, and judges can use the live UI against your laptop backend.
+
+---
+
 ## ⚙ Configuration
 
 Copy `.env.example` → `.env`. Key variables:
