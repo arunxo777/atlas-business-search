@@ -161,7 +161,7 @@ FIRECRAWL_API_KEY=fc-your_firecrawl_key
 ### 2. One-click start (Windows)
 
 ```bat
-start-dev.bat
+start.bat
 ```
 
 Opens **http://localhost:3000** with backend on **http://127.0.0.1:8000**.
@@ -239,12 +239,10 @@ Judges → Vercel UI → ngrok HTTPS URL → your laptop (FastAPI backend)
 ### One-click demo (Windows)
 
 ```bat
-start-demo.bat
+start.bat
 ```
 
-This starts the backend + ngrok and prints the checklist.
-
-### Manual setup
+Double-click **`start.bat`** — opens backend, ngrok, and local frontend in separate windows.
 
 **1. Install ngrok (once)**
 
@@ -253,13 +251,11 @@ winget install ngrok.ngrok
 ngrok config add-authtoken YOUR_TOKEN   # free at ngrok.com
 ```
 
-**2. Start backend + tunnel**
+**2. Run everything**
 
 ```bat
-start-demo.bat
+start.bat
 ```
-
-Or separately: `start-dev.bat` (backend only) then `start-ngrok.bat`.
 
 **3. Copy ngrok URL** from the ngrok window:
 
@@ -396,9 +392,9 @@ atlas-business-search/
 │       └── api/          # API client + SSE hook
 ├── proxy-pool/data/      # proxy-in-a-box config
 ├── docker-compose.yml
-├── start-dev.bat         # Windows one-click dev
-├── start-all.bat         # Dev + proxy pool
-├── stop-dev.bat
+├── start.bat         # Windows one-click dev
+├── start.bat             # Backend + ngrok + frontend
+├── stop.bat              # Stop everything
 ├── .env.example
 └── README.md
 ```
@@ -411,9 +407,9 @@ atlas-business-search/
 
 | Script | Purpose |
 |--------|---------|
-| `start-dev.bat` | Kill stale ports → start backend + frontend |
-| `start-all.bat` | Docker proxy pool + `start-dev.bat` |
-| `stop-dev.bat` | Stop processes on ports 8000 & 3000 |
+| `start.bat` | Kill stale ports → start backend + frontend |
+| `start.bat` | Start backend + ngrok + frontend |
+| `stop.bat` | Stop backend, frontend, and ngrok |
 
 ### Proxy pool (standalone)
 

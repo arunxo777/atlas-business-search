@@ -1,17 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Loader2, Sparkles, ChevronDown } from "lucide-react";
+import { Search, Loader2, Sparkles } from "lucide-react";
 import { startResearch } from "@/api/client";
 import { LLMStatusBar } from "./LLMStatusBar";
+import { ModelSelector, type ProviderValue } from "./ModelSelector";
 import { cn } from "@/lib/utils";
-
-const PROVIDERS = [
-  { value: "auto", label: "Auto" },
-  { value: "ollama", label: "Ollama" },
-  { value: "groq", label: "Groq" },
-  { value: "mistral", label: "Mistral" },
-  { value: "openai", label: "OpenAI" },
-];
 
 const EXAMPLE_QUERIES = [
   "Money exchange in Madurai",
@@ -27,7 +20,7 @@ interface SearchBarProps {
 
 export function SearchBar({ className, variant = "hero" }: SearchBarProps) {
   const [query, setQuery] = useState("");
-  const [provider, setProvider] = useState("auto");
+  const [provider, setProvider] = useState<ProviderValue>("auto");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
@@ -107,21 +100,11 @@ export function SearchBar({ className, variant = "hero" }: SearchBarProps) {
           </div>
 
           <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pb-4 border-t border-white/[0.06] pt-3">
-            <div className="relative">
-              <select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-                className="appearance-none rounded-lg border border-white/10 bg-white/[0.04] pl-3 pr-8 py-1.5 text-xs font-medium text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
-                disabled={loading}
-              >
-                {PROVIDERS.map((p) => (
-                  <option key={p.value} value={p.value} className="bg-zinc-900">
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
-            </div>
+            <ModelSelector
+              value={provider}
+              onChange={setProvider}
+              disabled={loading}
+            />
 
             <button
               type="submit"
