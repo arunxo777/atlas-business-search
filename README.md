@@ -141,7 +141,7 @@ flowchart LR
 ### 1. Clone & configure
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/atlas-business-search.git
+git clone https://github.com/arunxo777/atlas-business-search.git
 cd atlas-business-search
 cp .env.example .env
 ```
