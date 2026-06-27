@@ -42,6 +42,7 @@ export interface BusinessRecord {
   verification_details: Record<string, unknown>;
   source_reliability_score: number;
   rank_score: number;
+  rank_position?: number;
   raw_sources: string[];
   discovered_at: string;
   last_updated: string;
@@ -155,7 +156,7 @@ export async function getResults(
 
 export function getExportUrl(
   jobId: string,
-  format: "json" | "csv" | "xlsx"
+  format: "json" | "csv" | "xlsx" | "pdf"
 ): string {
   return `${API_URL}/api/results/${jobId}/export?format=${format}`;
 }

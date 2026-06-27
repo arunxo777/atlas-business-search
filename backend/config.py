@@ -38,18 +38,28 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     serpapi_key: str = ""
-    use_serpapi: bool = True
-    use_omkar_google_scraper: bool = True
+    use_serpapi: bool = False
+    serpapi_maps_only: bool = True
+    use_omkar_google_scraper: bool = False
     use_rapidapi_google: bool = True
     rapidapi_google_key: str = ""
     google_scraper_max_results: int = 20
     use_firecrawl: bool = True
     firecrawl_api_key: str = ""
     firecrawl_api_url: str = "https://api.firecrawl.dev"
-    firecrawl_search_limit: int = 15
+    firecrawl_search_limit: int = 10
+    use_playwright: bool = True
+    enrich_social_profiles: bool = False
+    max_scrape_urls: int = 8
+    max_enrich_businesses: int = 12
+    skip_scrape_if_bootstrap_min: int = 10
+    max_llm_dedup_pairs: int = 6
+    fast_mode: bool = True
+    use_llm_on_scrape: bool = False
+    llm_content_max_chars: int = 3500
 
     # Proxy pool — https://github.com/naiba/proxy-in-a-box
-    use_proxy_pool: bool = True
+    use_proxy_pool: bool = False
     proxy_pool_http: str = "http://127.0.0.1:8080"
     proxy_pool_https: str = "http://127.0.0.1:8081"
     proxy_pool_api: str = "http://127.0.0.1:8083"
@@ -57,11 +67,15 @@ class Settings(BaseSettings):
     # App
     database_url: str = "sqlite+aiosqlite:///./data/research.db"
     cache_ttl_hours: int = 24
-    max_concurrent_scrapers: int = 10
+    max_concurrent_scrapers: int = 3
     max_businesses_per_query: int = 500
     backend_port: int = 8000
     frontend_port: int = 3000
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
+
+    @property
+    def serpapi_enabled(self) -> bool:
+        return bool(self.use_serpapi and self.serpapi_key)
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -90,14 +104,14 @@ class Settings(BaseSettings):
         configs.extend(
             [
                 {
-                    "name": "groq",
-                    "model": f"groq/{self.groq_model}",
-                    "api_key": self.groq_api_key,
-                },
-                {
                     "name": "mistral",
                     "model": f"mistral/{self.mistral_model}",
                     "api_key": self.mistral_api_key,
+                },
+                {
+                    "name": "groq",
+                    "model": f"groq/{self.groq_model}",
+                    "api_key": self.groq_api_key,
                 },
                 {
                     "name": "openai",
@@ -181,14 +195,19 @@ class Settings(BaseSettings):
                 "Start Ollama and pull your model: ollama pull gemma2:2b"
             )
 
-        ollama = await self._probe_ollama()
-        if ollama:
-            return ollama
+        if not self.fast_mode:
+            ollama = await self._probe_ollama()
+            if ollama:
+                return ollama
 
         for cfg in self.provider_configs()[1:]:
             result = await self._probe_litellm_provider(cfg)
             if result:
                 return result
+
+        ollama = await self._probe_ollama()
+        if ollama:
+            return ollama
 
         raise RuntimeError(
             "No LLM provider available. Install Ollama locally or configure API keys."

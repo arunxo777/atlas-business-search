@@ -44,10 +44,11 @@ async def fetch_rotating_proxy(settings: Settings | None = None) -> str | None:
         return get_proxy_url(s)
 
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=2.0) as client:
             resp = await client.get(f"{s.proxy_pool_api.rstrip('/')}/get")
             if resp.status_code != 200:
-                return get_proxy_url(s)
+                logger.debug("Proxy pool unavailable — using direct connection")
+                return None
             text = resp.text.strip()
             if text.startswith("http"):
                 return text
@@ -60,7 +61,7 @@ async def fetch_rotating_proxy(settings: Settings | None = None) -> str | None:
     except Exception as exc:
         logger.debug("Proxy pool /get failed: %s", exc)
 
-    return get_proxy_url(s)
+    return None
 
 
 async def get_pool_stats(settings: Settings | None = None) -> dict[str, Any]:

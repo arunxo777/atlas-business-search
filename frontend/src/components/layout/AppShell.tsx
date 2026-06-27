@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import { AtlasLogo } from "@/components/layout/AtlasLogo";
 import { LLMStatusBar } from "@/components/LLMStatusBar";
 import { cn } from "@/lib/utils";
 
@@ -31,15 +31,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-50 glass border-b border-white/[0.06]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-glow-sm transition-transform group-hover:scale-105">
-              <Sparkles className="h-4 w-4 text-white" />
-            </div>
+            <AtlasLogo size={36} />
             <div className="flex flex-col">
               <span className="font-semibold text-[15px] leading-tight tracking-tight">
                 Atlas Research
               </span>
               <span className="text-[10px] text-muted-foreground leading-tight hidden sm:block">
-                AI Business Intelligence
+                Verified business data
               </span>
             </div>
           </Link>

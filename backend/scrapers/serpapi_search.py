@@ -23,7 +23,7 @@ class SerpAPIClient:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.settings.serpapi_key)
+        return self.settings.serpapi_enabled
 
     async def _get(self, params: dict) -> dict:
         params = {**params, "api_key": self.settings.serpapi_key}
@@ -33,18 +33,17 @@ class SerpAPIClient:
             return resp.json()
 
     async def search_urls(self, category: str, location: str) -> list[SearchResult]:
+        """Discover URLs — maps-only uses 1 SerpAPI credit per search."""
         if not self.enabled:
             return []
 
         query = f"{category} in {location}"
         results: list[SearchResult] = []
-        extra_queries = [
-            query,
-            f"{category} {location} site:linkedin.com",
-            f"{category} {location} site:facebook.com",
-            f"{category} {location} directory",
-        ]
 
+        if self.settings.serpapi_maps_only:
+            return await self._maps_search_urls(query)
+
+        extra_queries = [query, f"{category} {location} directory"]
         for q in extra_queries:
             try:
                 data = await self._get({"engine": "google", "q": q, "num": 10})
@@ -53,13 +52,24 @@ class SerpAPIClient:
                     if url:
                         st = _classify_url(url)
                         results.append(
-                            SearchResult(url=url, source_type=st, priority_score=score_source_type(st))
+                            SearchResult(
+                                url=url,
+                                source_type=st,
+                                priority_score=score_source_type(st),
+                            )
                         )
             except Exception as exc:
                 logger.warning("SerpAPI Google search failed for '%s': %s", q, exc)
 
+        results.extend(await self._maps_search_urls(query))
+        return results
+
+    async def _maps_search_urls(self, query: str) -> list[SearchResult]:
+        results: list[SearchResult] = []
         try:
-            maps_data = await self._get({"engine": "google_maps", "q": query, "type": "search"})
+            maps_data = await self._get(
+                {"engine": "google_maps", "q": query, "type": "search"}
+            )
             for item in maps_data.get("local_results", []):
                 maps_link = item.get("place_id_search") or item.get("link", "")
                 if maps_link:
@@ -72,12 +82,12 @@ class SerpAPIClient:
                     )
         except Exception as exc:
             logger.warning("SerpAPI Maps search failed: %s", exc)
-
         return results
 
     async def fetch_local_businesses(
         self, category: str, location: str, job_id: str
     ) -> list[BusinessRecord]:
+        """Bootstrap businesses from Google Maps — 1 SerpAPI credit."""
         if not self.enabled:
             return []
 
@@ -93,7 +103,11 @@ class SerpAPIClient:
                 if not name:
                     continue
 
-                place_url = item.get("place_id_search") or item.get("link") or f"serpapi://maps/{name}"
+                place_url = (
+                    item.get("place_id_search")
+                    or item.get("link")
+                    or f"serpapi://maps/{name}"
+                )
 
                 phones: list[str] = []
                 if item.get("phone"):
@@ -106,7 +120,9 @@ class SerpAPIClient:
                 rating = item.get("rating")
                 review_count = item.get("reviews")
                 if isinstance(review_count, str):
-                    review_count = int("".join(c for c in review_count if c.isdigit()) or 0) or None
+                    review_count = (
+                        int("".join(c for c in review_count if c.isdigit()) or 0) or None
+                    )
 
                 working_hours = None
                 hours_raw = item.get("hours") or item.get("operating_hours")

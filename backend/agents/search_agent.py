@@ -36,7 +36,7 @@ class SearchAgent:
         ]
         if self.settings.use_omkar_google_scraper:
             tasks.append(self._search_omkar_google(category, location))
-        if self.settings.use_serpapi and self.settings.serpapi_key:
+        if self.settings.serpapi_enabled and not self.settings.serpapi_maps_only:
             tasks.append(self._search_serpapi(category, location))
         if self.settings.use_firecrawl and self.settings.firecrawl_api_key:
             tasks.append(self._search_firecrawl(category, location))
@@ -58,12 +58,12 @@ class SearchAgent:
     async def _search_duckduckgo(
         self, category: str, location: str
     ) -> list[SearchResult]:
+        if self.settings.serpapi_enabled:
+            return []
+
         queries = [
             f"{category} in {location}",
             f"{category} {location} site:yelp.com",
-            f"{category} {location} site:yellowpages.com",
-            f"{category} {location} reviews",
-            f"{category} {location} directory",
         ]
         results: list[SearchResult] = []
 
@@ -77,7 +77,7 @@ class SearchAgent:
 
         for query in queries:
             try:
-                await asyncio.sleep(2.5)
+                await asyncio.sleep(0.5)
                 items = await asyncio.to_thread(_run_ddg, query)
                 for item in items:
                     url = item.get("href") or item.get("link", "")
@@ -94,7 +94,7 @@ class SearchAgent:
             except Exception as exc:
                 logger.error("DDG query error: %s", exc)
 
-        if not results and self.settings.use_serpapi and self.settings.serpapi_key:
+        if not results and self.settings.serpapi_enabled:
             results.extend(await self._search_serpapi(category, location))
 
         if not results:
@@ -152,7 +152,7 @@ class SearchAgent:
             tasks.append(self._fetch_firecrawl_businesses(category, location, job_id))
         if self.settings.use_omkar_google_scraper:
             tasks.append(self._fetch_omkar_google_businesses(category, location, job_id))
-        if self.settings.use_serpapi and self.settings.serpapi_key:
+        if self.settings.serpapi_enabled:
             tasks.append(self.fetch_serpapi_businesses(category, location, job_id))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -331,9 +331,13 @@ class SearchAgent:
         return "search_result"
 
     def _dedup_urls(self, results: list[SearchResult]) -> list[SearchResult]:
+        from utils.url_filters import is_blocked_scrape_domain
+
         seen: set[str] = set()
         deduped: list[SearchResult] = []
         for r in sorted(results, key=lambda x: x.priority_score, reverse=True):
+            if is_blocked_scrape_domain(r.url):
+                continue
             normalized = normalize_url(r.url)
             if normalized not in seen:
                 seen.add(normalized)

@@ -22,6 +22,7 @@ import type { BusinessRecord } from "@/api/client";
 import { VerificationBadge } from "./VerificationBadge";
 import { BusinessCard } from "./BusinessCard";
 import { cn } from "@/lib/utils";
+import { buildTrustRankMap, estimateRankScore, sortByTrustRank } from "@/lib/ranking";
 
 interface BusinessTableProps {
   jobId: string;
@@ -41,17 +42,23 @@ export function BusinessTable({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(25);
 
+  const rankedData = useMemo(() => sortByTrustRank(businesses), [businesses]);
+  const trustRankById = useMemo(
+    () => buildTrustRankMap(rankedData),
+    [rankedData]
+  );
+
   const columns = useMemo<ColumnDef<BusinessRecord>[]>(
     () => [
       {
         id: "rank_score",
         accessorKey: "rank_score",
         header: "Rank",
-        cell: ({ row, table }) => {
-          const position =
-            table.getSortedRowModel().rows.findIndex((r) => r.id === row.id) + 1;
-          const score = row.original.rank_score ?? 0;
-          const isTop3 = position <= 3 && score > 0;
+        cell: ({ row }) => {
+          const position = trustRankById.get(row.original.id) ?? "—";
+          const score = estimateRankScore(row.original);
+
+          const isTop3 = typeof position === "number" && position <= 3;
 
           return (
             <div className="flex items-center gap-2">
@@ -159,11 +166,11 @@ export function BusinessTable({
         enableSorting: false,
       },
     ],
-    []
+    [trustRankById]
   );
 
   const table = useReactTable({
-    data: businesses,
+    data: rankedData,
     columns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,

@@ -8,6 +8,7 @@ from typing import Any
 
 from rapidfuzz import fuzz
 
+from config import Settings, get_settings
 from llm.prompts import dedup_prompt
 from llm.router import LLMRouter
 from models import BusinessRecord, utcnow
@@ -30,9 +31,10 @@ STATUS_RANK = {
 
 
 class DedupAgent:
-    def __init__(self, llm: LLMRouter) -> None:
+    def __init__(self, llm: LLMRouter, settings: Settings | None = None) -> None:
         self.llm = llm
-        self.llm_semaphore = asyncio.Semaphore(5)
+        self.settings = settings or get_settings()
+        self.llm_semaphore = asyncio.Semaphore(2 if self.settings.fast_mode else 5)
 
     async def deduplicate(
         self, businesses: list[BusinessRecord]
@@ -84,6 +86,9 @@ class DedupAgent:
                     duplicates_removed += 1
                 elif 70 <= ratio < 90 and same_city:
                     candidates.append((idx_a, idx_b, ratio))
+
+        candidates.sort(key=lambda x: x[2], reverse=True)
+        candidates = candidates[: self.settings.max_llm_dedup_pairs]
 
         llm_merged = await self._llm_confirm_candidates(businesses, candidates)
         for idx_b in llm_merged:

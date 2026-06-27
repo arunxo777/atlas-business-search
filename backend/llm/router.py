@@ -20,7 +20,7 @@ litellm.suppress_debug_info = True
 
 
 class LLMRouter:
-    PROVIDER_ORDER = ["ollama", "groq", "mistral", "openai"]
+    PROVIDER_ORDER = ["ollama", "mistral", "groq", "openai"]
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -117,6 +117,8 @@ class LLMRouter:
         if self.active_provider.get("name") == "ollama":
             kwargs["timeout"] = self.settings.ollama_timeout_seconds
             kwargs["num_retries"] = 1
+        else:
+            kwargs["num_retries"] = 0
 
         if schema:
             kwargs["response_format"] = {"type": "json_object"}
@@ -149,7 +151,7 @@ class LLMRouter:
         if not self._initialized:
             await self.initialize()
 
-        max_attempts = len(self.available_providers) or 1
+        max_attempts = max(6, len(self.available_providers) * 2)
         last_error: Exception | None = None
 
         for _ in range(max_attempts):
@@ -173,16 +175,51 @@ class LLMRouter:
                 return content
             except Exception as exc:
                 last_error = exc
+                err = str(exc).lower()
                 logger.error(
                     "LLM call failed (provider=%s): %s",
                     self.active_provider.get("name") if self.active_provider else "?",
                     exc,
                 )
-                rotated = await self._rotate_provider()
-                if not rotated:
-                    break
+                if self._should_truncate_retry(exc, messages):
+                    messages = self._truncate_messages(messages)
+                    continue
+                allow_rotate = (
+                    not self._locked_provider
+                    or "rate_limit" in err
+                    or "429" in err
+                    or "too large" in err
+                    or "413" in err
+                    or "payload" in err
+                )
+                if allow_rotate:
+                    rotated = await self._rotate_provider()
+                    if rotated:
+                        continue
+                break
 
         raise RuntimeError(f"All LLM providers failed: {last_error}")
+
+    @staticmethod
+    def _should_truncate_retry(exc: Exception, messages: list[dict[str, str]]) -> bool:
+        err = str(exc).lower()
+        if not any(k in err for k in ("too large", "413", "payload", "tokens")):
+            return False
+        for msg in messages:
+            content = msg.get("content") or ""
+            if len(content) > 2500:
+                return True
+        return False
+
+    @staticmethod
+    def _truncate_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+        trimmed: list[dict[str, str]] = []
+        for msg in messages:
+            content = msg.get("content") or ""
+            if len(content) > 2500:
+                content = content[:2500] + "\n...[truncated]"
+            trimmed.append({**msg, "content": content})
+        return trimmed
 
     async def complete_json(
         self,

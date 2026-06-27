@@ -13,6 +13,13 @@ VERIFICATION_WEIGHT = {
     "conflicted": 0.2,
 }
 
+VERIFICATION_RANK = {
+    "highly_verified": 4,
+    "verified": 3,
+    "unverified": 2,
+    "conflicted": 1,
+}
+
 
 def compute_rank_score(business: BusinessRecord) -> float:
     """Higher = better rank. Max theoretical ~100."""
@@ -48,8 +55,27 @@ def compute_rank_score(business: BusinessRecord) -> float:
     return round(min(score, 100.0), 2)
 
 
+def _sort_key(business: BusinessRecord) -> tuple:
+    """Best records first — used after rank_score is computed."""
+    return (
+        business.rank_score,
+        VERIFICATION_RANK.get(business.verification_status, 0),
+        business.rating or 0.0,
+        business.source_reliability_score,
+        business.non_null_field_count(),
+        len(set(business.raw_sources)),
+        business.business_name.lower(),
+    )
+
+
 def rank_businesses(businesses: list[BusinessRecord]) -> list[BusinessRecord]:
-    """Sort businesses by rank score descending (best first)."""
+    """Sort businesses by rank score descending (best = first) and assign rank_position."""
     for b in businesses:
         b.rank_score = compute_rank_score(b)
-    return sorted(businesses, key=lambda b: b.rank_score, reverse=True)
+
+    ranked = sorted(businesses, key=_sort_key, reverse=True)
+
+    for idx, business in enumerate(ranked, start=1):
+        business.rank_position = idx
+
+    return ranked

@@ -68,14 +68,8 @@ export function Home() {
     <div className="relative">
       {/* Hero */}
       <section className="max-w-4xl mx-auto px-4 sm:px-6 pt-20 pb-16 text-center">
-        <div
-          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass text-xs font-medium text-muted-foreground mb-8 animate-fade-in"
-        >
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-          </span>
-          Production-grade business intelligence agent
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass text-xs font-medium text-muted-foreground mb-8 animate-fade-in">
+          Multi-source verified business research
         </div>
 
         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6 animate-fade-in-up">
@@ -134,7 +128,7 @@ export function Home() {
             Why Atlas
           </h2>
           <p className="text-2xl font-bold gradient-text">
-            Built for hackathon judges who've seen 50 scrapers
+            Verification-first research pipeline
           </p>
         </div>
 

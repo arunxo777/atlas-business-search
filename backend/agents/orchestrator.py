@@ -110,7 +110,7 @@ class ResearchOrchestrator:
                 )
             if bootstrap_businesses:
                 sources = []
-                if self.settings.use_serpapi and self.settings.serpapi_key:
+                if self.settings.serpapi_enabled:
                     sources.append("SerpAPI")
                 if self.settings.use_firecrawl and self.settings.firecrawl_api_key:
                     sources.append("Firecrawl")
@@ -161,13 +161,35 @@ class ResearchOrchestrator:
                     record.model_dump(mode="json"),
                 )
 
-            scraped = await scraper_agent.scrape_all(
-                search_results,
-                category,
-                location,
-                on_business_found=on_business_found,
-                max_results=min(request.max_results, self.settings.max_businesses_per_query),
+            bootstrap_count = len(businesses)
+            skip_scrape = (
+                self.settings.fast_mode
+                and bootstrap_count >= self.settings.skip_scrape_if_bootstrap_min
             )
+            if skip_scrape:
+                await self._emit(
+                    event_queue,
+                    "progress",
+                    {
+                        "phase": "scraping",
+                        "progress_pct": self.PHASE_PROGRESS["scraping"],
+                        "message": (
+                            f"Bootstrap found {bootstrap_count} businesses — "
+                            "skipping deep scrape for speed"
+                        ),
+                    },
+                )
+                scraped = []
+            else:
+                scraped = await scraper_agent.scrape_all(
+                    search_results,
+                    category,
+                    location,
+                    on_business_found=on_business_found,
+                    max_results=min(
+                        request.max_results, self.settings.max_businesses_per_query
+                    ),
+                )
 
             if not businesses:
                 businesses = scraped
@@ -210,7 +232,7 @@ class ResearchOrchestrator:
                 },
             )
 
-            dedup_agent = DedupAgent(self.llm)
+            dedup_agent = DedupAgent(self.llm, self.settings)
             businesses, dupes_removed = await dedup_agent.deduplicate(businesses)
 
             await self.db.update_job(
@@ -345,7 +367,7 @@ class ResearchOrchestrator:
 
     def _active_source_labels(self) -> list[str]:
         labels = ["DuckDuckGo", "Bing", "YP/Yelp/Maps"]
-        if self.settings.use_serpapi and self.settings.serpapi_key:
+        if self.settings.serpapi_enabled:
             labels.append("SerpAPI")
         if self.settings.use_firecrawl and self.settings.firecrawl_api_key:
             labels.append("Firecrawl")

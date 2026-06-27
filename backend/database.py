@@ -97,6 +97,10 @@ class Database:
             await self.conn.execute(
                 "ALTER TABLE business_records ADD COLUMN rank_score REAL DEFAULT 0.0"
             )
+        if "rank_position" not in cols:
+            await self.conn.execute(
+                "ALTER TABLE business_records ADD COLUMN rank_position INTEGER DEFAULT 0"
+            )
 
     async def close(self) -> None:
         if self._connection:
@@ -208,8 +212,8 @@ class Database:
                 working_hours, rating, review_count, services, specialties,
                 license_information, certifications, awards, social_profiles,
                 image_urls,                 source_urls, verification_status, verification_details,
-                source_reliability_score, rank_score, raw_sources, discovered_at, last_updated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                source_reliability_score, rank_score, rank_position, raw_sources, discovered_at, last_updated
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 business_name=excluded.business_name,
                 address=excluded.address,
@@ -231,6 +235,7 @@ class Database:
                 verification_details=excluded.verification_details,
                 source_reliability_score=excluded.source_reliability_score,
                 rank_score=excluded.rank_score,
+                rank_position=excluded.rank_position,
                 raw_sources=excluded.raw_sources,
                 last_updated=excluded.last_updated
             """,
@@ -257,7 +262,7 @@ class Database:
     ) -> tuple[list[BusinessRecord], int]:
         allowed_sort = {
             "business_name", "address", "rating", "verification_status",
-            "source_reliability_score", "rank_score", "discovered_at",
+            "source_reliability_score", "rank_score", "rank_position", "discovered_at",
         }
         if sort_by not in allowed_sort:
             sort_by = "business_name"
@@ -290,7 +295,7 @@ class Database:
         cursor = await self.conn.execute(
             f"""
             SELECT * FROM business_records WHERE {where}
-            ORDER BY {sort_by} {order}
+            ORDER BY {sort_by} {order}, rank_position ASC, source_reliability_score DESC, rating DESC
             LIMIT ? OFFSET ?
             """,
             params + [page_size, offset],
@@ -322,6 +327,7 @@ class Database:
             json.dumps(b.verification_details),
             b.source_reliability_score,
             b.rank_score,
+            b.rank_position,
             json.dumps(b.raw_sources),
             b.discovered_at.isoformat(),
             b.last_updated.isoformat(),
@@ -351,6 +357,7 @@ class Database:
             verification_details=json.loads(row["verification_details"] or "{}"),
             source_reliability_score=row["source_reliability_score"] or 0.0,
             rank_score=row["rank_score"] or 0.0,
+            rank_position=row.get("rank_position") or 0,
             raw_sources=json.loads(row["raw_sources"] or "[]"),
             discovered_at=datetime.fromisoformat(row["discovered_at"]),
             last_updated=datetime.fromisoformat(row["last_updated"]),

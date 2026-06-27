@@ -65,15 +65,19 @@ async def get_research_report(job_id: str) -> ResearchReport:
 @router.get("/{job_id}/export")
 async def export_results(
     job_id: str,
-    format: str = Query("json", pattern="^(json|csv|xlsx)$"),
+    format: str = Query("json", pattern="^(json|csv|xlsx|pdf)$"),
 ) -> Response:
     db = await get_database()
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    businesses, _ = await db.get_businesses_by_job(job_id, page=1, page_size=10000)
-    content, media_type, filename = export_businesses(businesses, format)  # type: ignore[arg-type]
+    businesses, _ = await db.get_businesses_by_job(
+        job_id, page=1, page_size=10000, sort_by="rank_score", sort_order="desc"
+    )
+    content, media_type, filename = export_businesses(
+        businesses, format, job=job  # type: ignore[arg-type]
+    )
 
     return Response(
         content=content,

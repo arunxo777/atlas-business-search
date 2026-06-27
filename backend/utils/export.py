@@ -10,9 +10,9 @@ from typing import Literal
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
-from models import BusinessRecord
+from models import BusinessRecord, ResearchJob
 
-ExportFormat = Literal["json", "csv", "xlsx"]
+ExportFormat = Literal["json", "csv", "xlsx", "pdf"]
 
 
 def _business_to_flat(b: BusinessRecord) -> dict[str, str | float | int | None]:
@@ -41,6 +41,7 @@ def _business_to_flat(b: BusinessRecord) -> dict[str, str | float | int | None]:
         ),
         "image_urls": "; ".join(b.image_urls),
         "rank_score": b.rank_score,
+        "rank_position": b.rank_position,
         "verification_status": b.verification_status,
         "source_reliability_score": b.source_reliability_score,
         "discovered_at": b.discovered_at.isoformat(),
@@ -51,8 +52,18 @@ def _business_to_flat(b: BusinessRecord) -> dict[str, str | float | int | None]:
 def export_businesses(
     businesses: list[BusinessRecord],
     fmt: ExportFormat,
+    job: ResearchJob | None = None,
+    active_sources: list[str] | None = None,
 ) -> tuple[bytes, str, str]:
     """Export businesses to the requested format. Returns (content, media_type, filename)."""
+    if fmt == "pdf":
+        if not job:
+            raise ValueError("PDF export requires job metadata")
+        from utils.pdf_export import export_research_pdf, pdf_filename_for_query
+
+        content = export_research_pdf(job, businesses, active_sources)
+        return content, "application/pdf", pdf_filename_for_query(job.query)
+
     if fmt == "json":
         data = [b.model_dump(mode="json") for b in businesses]
         content = json.dumps(data, indent=2, default=str).encode("utf-8")

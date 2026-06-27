@@ -14,10 +14,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000" ^| findstr "LISTENING
     taskkill /F /PID %%a >nul 2>&1
 )
 
-taskkill /F /IM ngrok.exe >nul 2>&1
-if not errorlevel 1 echo Stopped ngrok
-
-echo Done. Close any Atlas Backend / Frontend / ngrok windows if still open.
+echo Done.
 timeout /t 2 /nobreak >nul
 
 endlocal

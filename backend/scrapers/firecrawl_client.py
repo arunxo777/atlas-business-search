@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import httpx
 
 from config import Settings, get_settings
+from utils.url_filters import is_firecrawl_supported
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,9 @@ class FirecrawlClient:
 
     async def scrape(self, url: str) -> dict[str, Any] | None:
         if not self.enabled:
+            return None
+        if not is_firecrawl_supported(url):
+            logger.debug("Skipping unsupported Firecrawl URL: %s", url)
             return None
 
         payload = {
@@ -167,8 +171,4 @@ def _normalize_search_results(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _skip_url(url: str) -> bool:
-    domain = urlparse(url).netloc.lower()
-    return any(
-        s in domain
-        for s in ("google.com/search", "bing.com/search", "facebook.com/login")
-    )
+    return not is_firecrawl_supported(url)

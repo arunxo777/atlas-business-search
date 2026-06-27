@@ -47,13 +47,15 @@ def extract_from_yellowpages(html: str, source_url: str, job_id: str) -> list[Bu
             if match:
                 rating = float(match.group(1))
 
-        source_urls: dict[str, list[str]] = {}
+        source_urls: dict[str, list[str]] = {"business_name": [source_url]}
         if address:
             source_urls["address"] = [source_url]
         if phones:
             source_urls["phone"] = [source_url]
         if website:
             source_urls["website"] = [source_url]
+        if rating is not None:
+            source_urls["rating"] = [source_url]
 
         records.append(
             BusinessRecord(
@@ -102,7 +104,11 @@ def extract_from_yelp(html: str, source_url: str, job_id: str) -> list[BusinessR
             if match:
                 rating = float(match.group(1))
 
-        source_urls = {"address": [source_url]} if address else {}
+        source_urls: dict[str, list[str]] = {"business_name": [source_url]}
+        if address:
+            source_urls["address"] = [source_url]
+        if rating is not None:
+            source_urls["rating"] = [source_url]
         records.append(
             BusinessRecord(
                 id=str(uuid4()),
@@ -157,7 +163,7 @@ def _extract_generic_listings(
                 job_id=job_id,
                 business_name=name,
                 phone=[phone],
-                source_urls={"phone": [source_url]},
+                source_urls={"phone": [source_url], "business_name": [source_url]},
                 source_reliability_score=reliability,
                 raw_sources=[source_url],
                 discovered_at=utcnow(),
@@ -196,7 +202,10 @@ def extract_from_bing(html: str, source_url: str, job_id: str) -> list[BusinessR
         if snippet and any(c.isdigit() for c in snippet):
             address = snippet[:200] if len(snippet) > 20 else None
 
-        source_urls: dict[str, list[str]] = {"website": [href]}
+        source_urls: dict[str, list[str]] = {
+            "business_name": [href or source_url],
+            "website": [href],
+        }
         if phones:
             source_urls["phone"] = [source_url]
         if address:

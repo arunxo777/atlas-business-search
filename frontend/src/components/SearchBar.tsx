@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Loader2, Sparkles } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { startResearch } from "@/api/client";
 import { LLMStatusBar } from "./LLMStatusBar";
 import { ModelSelector, type ProviderValue } from "./ModelSelector";
@@ -35,7 +35,7 @@ export function SearchBar({ className, variant = "hero" }: SearchBarProps) {
     try {
       const response = await startResearch({
         query: query.trim(),
-        max_results: 100,
+        max_results: 50,
         llm_provider: provider === "auto" ? null : provider,
       });
       navigate(`/results/${response.job_id}`);
@@ -79,7 +79,7 @@ export function SearchBar({ className, variant = "hero" }: SearchBarProps) {
         >
           <div className="flex items-start gap-3 p-4 sm:p-5">
             <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20">
-              <Sparkles className="h-4 w-4 text-violet-400" />
+              <Search className="h-4 w-4 text-violet-400" />
             </div>
             <textarea
               value={query}

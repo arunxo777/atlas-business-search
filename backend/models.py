@@ -51,6 +51,7 @@ class BusinessRecord(BaseModel):
     verification_details: dict[str, Any] = Field(default_factory=dict)
     source_reliability_score: float = 0.0
     rank_score: float = 0.0
+    rank_position: int = 0
     raw_sources: list[str] = Field(default_factory=list)
     discovered_at: datetime = Field(default_factory=utcnow)
     last_updated: datetime = Field(default_factory=utcnow)

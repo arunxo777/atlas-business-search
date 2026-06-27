@@ -26,8 +26,11 @@ BUSINESS_SCHEMA = {
 
 
 def extract_business_prompt(html_text: str, query: str) -> list[dict[str, str]]:
+    from config import get_settings
+
+    max_chars = get_settings().llm_content_max_chars
     schema_str = json.dumps(BUSINESS_SCHEMA, indent=2)
-    truncated = html_text[:20000] if len(html_text) > 20000 else html_text
+    truncated = html_text[:max_chars] if len(html_text) > max_chars else html_text
     return [
         {
             "role": "system",

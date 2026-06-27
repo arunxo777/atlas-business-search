@@ -41,25 +41,65 @@ class EnrichmentAgent:
         businesses: list[BusinessRecord],
         location: str = "",
     ) -> list[BusinessRecord]:
-        tasks = [self._enrich_one(b, location) for b in businesses]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        enrich_targets: list[BusinessRecord] = []
+        incomplete_seen = 0
+        for business in businesses:
+            if not self._needs_enrichment(business):
+                continue
+            if (
+                self.settings.fast_mode
+                and incomplete_seen >= self.settings.max_enrich_businesses
+            ):
+                continue
+            incomplete_seen += 1
+            enrich_targets.append(business)
 
-        enriched: list[BusinessRecord] = []
-        for business, result in zip(businesses, results):
-            if isinstance(result, Exception):
-                logger.error(
-                    "Enrichment failed for %s: %s", business.business_name, result
-                )
-                enriched.append(validate_business_record(business))
-            else:
-                enriched.append(validate_business_record(result))
+        if enrich_targets:
+            results = await asyncio.gather(
+                *[self._enrich_one(b, location) for b in enrich_targets],
+                return_exceptions=True,
+            )
+            enriched_map: dict[int, BusinessRecord] = {}
+            for business, result in zip(enrich_targets, results):
+                if isinstance(result, Exception):
+                    logger.error(
+                        "Enrichment failed for %s: %s",
+                        business.business_name,
+                        result,
+                    )
+                    enriched_map[id(business)] = validate_business_record(business)
+                else:
+                    enriched_map[id(business)] = validate_business_record(result)
 
-        return enriched
+            return [
+                enriched_map.get(id(b), validate_business_record(b))
+                for b in businesses
+            ]
+
+        return [validate_business_record(b) for b in businesses]
+
+    @staticmethod
+    def _needs_enrichment(business: BusinessRecord) -> bool:
+        return not (
+            business.website
+            and business.phone
+            and business.address
+            and business.email
+        )
 
     async def _enrich_one(
         self, business: BusinessRecord, location: str
     ) -> BusinessRecord:
         async with self.semaphore:
+            if (
+                business.website
+                and business.phone
+                and business.address
+                and business.email
+            ):
+                business.last_updated = utcnow()
+                return business
+
             website = business.website
             if not website:
                 website = await self.search_agent.search_website(
@@ -84,7 +124,12 @@ class EnrichmentAgent:
             business.source_reliability_score, reliability
         )
 
-        if self.settings.use_firecrawl and self.settings.firecrawl_api_key:
+        firecrawl_merged = False
+        if (
+            not self.settings.fast_mode
+            and self.settings.use_firecrawl
+            and self.settings.firecrawl_api_key
+        ):
             try:
                 from scrapers.firecrawl_scraper import FirecrawlScraper
 
@@ -92,27 +137,20 @@ class EnrichmentAgent:
                 records = await fc.scrape_url(website)
                 if records:
                     self._merge_enrichment(business, records[0], website)
+                    firecrawl_merged = True
             except Exception as exc:
                 logger.warning("Firecrawl enrich failed for %s: %s", website, exc)
 
-        try:
-            html, _ = await fetch_page_html(website, get_user_agent())
-            if html:
-                parsed = parse_website_html(html, website)
-                self._merge_parsed(business, parsed, website)
-        except Exception as exc:
-            logger.warning(
-                "Website parse failed for %s: %s", business.business_name, exc
-            )
-
-        try:
-            records = await self.scraper_agent.scrape(website, "official_website")
-            if records:
-                self._merge_enrichment(business, records[0], website)
-        except Exception as exc:
-            logger.warning(
-                "Website LLM scrape failed for %s: %s", business.business_name, exc
-            )
+        if not firecrawl_merged:
+            try:
+                html, _ = await fetch_page_html(website, get_user_agent())
+                if html:
+                    parsed = parse_website_html(html, website)
+                    self._merge_parsed(business, parsed, website)
+            except Exception as exc:
+                logger.warning(
+                    "Website parse failed for %s: %s", business.business_name, exc
+                )
 
     def _merge_parsed(
         self, primary: BusinessRecord, parsed: dict, source_url: str
@@ -228,6 +266,9 @@ class EnrichmentAgent:
     async def _enrich_social_profiles(
         self, business: BusinessRecord, location: str
     ) -> None:
+        if not self.settings.enrich_social_profiles:
+            return
+
         if business.social_profiles.get("linkedin") and business.social_profiles.get(
             "facebook"
         ):
@@ -249,7 +290,7 @@ class EnrichmentAgent:
                 attach_source(business, "social_profiles", url)
 
     async def _search_profile_url(self, query: str, platform: str) -> str | None:
-        if self.settings.use_serpapi and self.settings.serpapi_key:
+        if self.settings.serpapi_enabled:
             try:
                 async with httpx.AsyncClient(timeout=20.0) as client:
                     resp = await client.get(

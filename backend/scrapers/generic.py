@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from llm.prompts import extract_business_prompt
 from llm.router import LLMRouter
+from config import get_settings
 from models import BusinessRecord, utcnow
 from scrapers.base import check_robots_txt, fetch_page_html, get_user_agent, random_delay
 from utils.field_validator import validate_business_record
@@ -33,7 +34,7 @@ class GenericScraper:
         url: str,
         source_type: str = "generic",
     ) -> list[BusinessRecord]:
-        await random_delay()
+        await random_delay(0.3, 1.0)
         ua = self._next_ua()
         allowed = await check_robots_txt(url, ua)
         if not allowed:
@@ -63,6 +64,12 @@ class GenericScraper:
         source_url: str,
         source_type: str,
     ) -> list[BusinessRecord]:
+        settings = get_settings()
+        if settings.fast_mode and not settings.use_llm_on_scrape:
+            from scrapers.listing_parser import _extract_generic_listings
+
+            return _extract_generic_listings(html, source_url, self.job_id, source_type)
+
         messages = extract_business_prompt(html, query=source_url)
         try:
             data = await self.llm.complete_json(messages)

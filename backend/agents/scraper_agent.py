@@ -15,8 +15,13 @@ from scrapers.linkedin import LinkedInScraper
 from scrapers.listing_parser import extract_from_bing
 from scrapers.yellowpages import YellowPagesScraper
 from scrapers.yelp import YelpScraper
+from utils.url_filters import is_high_value_scrape_url
 
 logger = logging.getLogger(__name__)
+
+_DIRECTORY_TYPES = frozenset(
+    {"yellowpages", "yelp", "google_maps", "bing", "google_local"}
+)
 
 
 class ScraperAgent:
@@ -55,27 +60,30 @@ class ScraperAgent:
     ) -> list[BusinessRecord]:
         async with self.semaphore:
             try:
-                if source_type == "firecrawl" and self.settings.use_firecrawl:
-                    fc = self._get_firecrawl()
-                    records = await fc.scrape_url(url)
-                    if records:
-                        return records
+                if not self.settings.fast_mode:
+                    if source_type == "firecrawl" and self.settings.use_firecrawl:
+                        fc = self._get_firecrawl()
+                        records = await fc.scrape_url(url)
+                        if records:
+                            return records
 
-                if (
-                    self.settings.use_firecrawl
-                    and self.settings.firecrawl_api_key
-                    and source_type in (
-                        "official_website",
-                        "generic",
-                        "search_result",
-                        "directory",
-                        "google_search",
-                    )
-                ):
-                    fc = self._get_firecrawl()
-                    records = await fc.scrape_url(url)
-                    if records:
-                        return records
+                    if (
+                        self.settings.use_firecrawl
+                        and self.settings.firecrawl_api_key
+                        and source_type in (
+                            "official_website",
+                            "generic",
+                            "search_result",
+                            "directory",
+                            "google_search",
+                        )
+                    ):
+                        fc = self._get_firecrawl()
+                        records = await fc.scrape_url(url)
+                        if records:
+                            return records
+                elif source_type not in _DIRECTORY_TYPES:
+                    return []
 
                 if source_type == "yellowpages":
                     if "/search" in url or "/search?" in url:
@@ -113,6 +121,29 @@ class ScraperAgent:
     ) -> list[BusinessRecord]:
         all_businesses: list[BusinessRecord] = []
 
+        filtered = [
+            sr
+            for sr in search_results
+            if is_high_value_scrape_url(sr.url, sr.source_type)
+        ]
+        if self.settings.fast_mode:
+            filtered = [
+                sr
+                for sr in filtered
+                if sr.source_type in _DIRECTORY_TYPES
+                or any(
+                    d in sr.url
+                    for d in (
+                        "yellowpages.com",
+                        "yelp.com",
+                        "bing.com/search",
+                        "google.com/maps",
+                    )
+                )
+            ]
+        filtered = sorted(filtered, key=lambda x: x.priority_score, reverse=True)
+        filtered = filtered[: self.settings.max_scrape_urls]
+
         async def _scrape_one(sr: SearchResult) -> list[BusinessRecord]:
             records = await self.scrape(sr.url, sr.source_type, category, location)
             if on_business_found:
@@ -120,18 +151,22 @@ class ScraperAgent:
                     await on_business_found(record)
             return records
 
-        tasks = [_scrape_one(sr) for sr in search_results]
+        tasks = [_scrape_one(sr) for sr in filtered]
 
-        if self.settings.use_firecrawl and self.settings.firecrawl_api_key:
+        if (
+            not self.settings.fast_mode
+            and self.settings.use_firecrawl
+            and self.settings.firecrawl_api_key
+        ):
+            from utils.url_filters import is_firecrawl_supported
+
             top_urls = [
                 sr.url
-                for sr in sorted(
-                    search_results,
-                    key=lambda x: x.priority_score,
-                    reverse=True,
-                )[:20]
+                for sr in filtered[:12]
+                if is_firecrawl_supported(sr.url)
             ]
-            tasks.append(self._firecrawl_batch(top_urls, on_business_found))
+            if top_urls:
+                tasks.append(self._firecrawl_batch(top_urls, on_business_found))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 

@@ -106,39 +106,49 @@ async def fetch_page_html_httpx(
 
 
 async def fetch_page_html(url: str, user_agent: str) -> tuple[str, str]:
-    """Fetch page HTML — Playwright via proxy pool, retry on captcha."""
+    """Fetch page HTML — httpx first, Playwright only when needed."""
     settings = get_settings()
     proxy_url = None
     if settings.use_proxy_pool:
         proxy_url = await fetch_rotating_proxy(settings)
 
-    if sys.platform == "win32":
-        html, md = await asyncio.to_thread(
-            _fetch_sync_playwright, url, user_agent, proxy_url
-        )
-    else:
-        html, md = await _fetch_async_playwright(url, user_agent, proxy_url)
+    # Fast path: avoid Playwright unless necessary (fixes Windows asyncio errors).
+    try:
+        html, md = await fetch_page_html_httpx(url, user_agent, proxy_url)
+        if html and not is_blocked_content(html, url):
+            return html, md
+    except Exception as exc:
+        logger.debug("httpx fetch failed for %s: %s", url, exc)
 
+    if not settings.use_playwright:
+        return "", ""
+
+    html, md = await _fetch_playwright(url, user_agent, proxy_url)
     if html and not is_blocked_content(html, url):
         return html, md
 
     if settings.use_proxy_pool:
         logger.warning("Blocked/captcha detected for %s — retrying with rotated proxy", url)
         proxy_url = await fetch_rotating_proxy(settings)
-        if sys.platform == "win32":
-            html, md = await asyncio.to_thread(
-                _fetch_sync_playwright, url, user_agent, proxy_url
-            )
-        else:
-            html, md = await _fetch_async_playwright(url, user_agent, proxy_url)
+        try:
+            html, md = await fetch_page_html_httpx(url, user_agent, proxy_url)
+            if html and not is_blocked_content(html, url):
+                return html, md
+        except Exception:
+            pass
+        html, md = await _fetch_playwright(url, user_agent, proxy_url)
         if html and not is_blocked_content(html, url):
             return html, md
 
-    try:
-        return await fetch_page_html_httpx(url, user_agent, proxy_url)
-    except Exception as exc:
-        logger.warning("httpx fetch failed for %s: %s", url, exc)
-        return "", ""
+    return "", ""
+
+
+async def _fetch_playwright(
+    url: str, user_agent: str, proxy_url: str | None
+) -> tuple[str, str]:
+    if sys.platform == "win32":
+        return await asyncio.to_thread(_fetch_sync_playwright, url, user_agent, proxy_url)
+    return await _fetch_async_playwright(url, user_agent, proxy_url)
 
 
 async def _fetch_async_playwright(
@@ -175,27 +185,34 @@ async def _fetch_async_playwright(
 def _fetch_sync_playwright(
     url: str, user_agent: str, proxy_url: str | None = None
 ) -> tuple[str, str]:
-    from playwright.sync_api import sync_playwright
+    try:
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-    settings = get_settings()
-    proxy_cfg = None
-    if proxy_url:
-        proxy_cfg = {"server": proxy_url}
-    elif settings.use_proxy_pool:
-        proxy_cfg = playwright_proxy(settings)
+        from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as p:
-        launch_kwargs: dict = {"headless": True}
-        if proxy_cfg:
-            launch_kwargs["proxy"] = proxy_cfg
-        browser = p.chromium.launch(**launch_kwargs)
-        page = browser.new_page(user_agent=user_agent)
-        page.goto(url, wait_until="domcontentloaded", timeout=45000)
-        page.wait_for_timeout(2500)
-        html = page.content()
-        current = page.url
-        browser.close()
+        settings = get_settings()
+        proxy_cfg = None
+        if proxy_url:
+            proxy_cfg = {"server": proxy_url}
+        elif settings.use_proxy_pool:
+            proxy_cfg = playwright_proxy(settings)
 
-    if is_blocked_content(html, current):
-        logger.warning("Captcha/block on %s (url=%s)", url, current)
-    return html, html
+        with sync_playwright() as p:
+            launch_kwargs: dict = {"headless": True}
+            if proxy_cfg:
+                launch_kwargs["proxy"] = proxy_cfg
+            browser = p.chromium.launch(**launch_kwargs)
+            page = browser.new_page(user_agent=user_agent)
+            page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            page.wait_for_timeout(2500)
+            html = page.content()
+            current = page.url
+            browser.close()
+
+        if is_blocked_content(html, current):
+            logger.warning("Captcha/block on %s (url=%s)", url, current)
+        return html, html
+    except Exception as exc:
+        logger.warning("Playwright sync fetch failed for %s: %s", url, exc)
+        return "", ""
